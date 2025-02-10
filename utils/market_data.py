@@ -83,8 +83,8 @@ def clean_market_data(data, market):
     # Sort index
     data = data.sort_index()
 
-    # Forward fill small gaps
-    data = data.fillna(method="ffill", limit=3)
+    # Forward fill small gaps using recommended method
+    data = data.ffill(limit=3)
 
     return data
 

@@ -45,10 +45,13 @@ def create_candlestick_chart(
     if chart_type == "heikinashi":
         display_data = heikin_ashi(display_data)
 
+    # Tarihleri kısa formata çevirmek için
+    display_data['date'] = pd.to_datetime(display_data.index).strftime('%Y-%m-%dT%H:%M:%S')
+
     fig = go.Figure(
         data=[
             go.Candlestick(
-                x=display_data.index,
+                x=display_data['date'],  # Artık kısa formatta tarihler
                 open=display_data["open"],
                 high=display_data["high"],
                 low=display_data["low"],
@@ -107,6 +110,11 @@ def create_candlestick_chart(
         showlegend=False,
         # Add mouse wheel zoom and other interactions
         hovermode="x unified",
+    )
+
+    # Alternatif olarak, mevcut grafikte x ekseni formatını değiştirmek için
+    fig.update_xaxes(
+        tickformat='%Y-%m-%dT%H:%M:%S'
     )
 
     # Add reset button to modebar
@@ -178,10 +186,13 @@ def create_candlestick_chart(
             display_ma = (
                 ma_data.iloc[:cutoff_index] if cutoff_index is not None else ma_data
             )
+            
+            # Tarihleri kısa formata çevir
+            ma_dates = pd.to_datetime(display_data.index).strftime('%Y-%m-%dT%H:%M:%S')
 
             fig.add_trace(
                 go.Scatter(
-                    x=display_data.index,
+                    x=ma_dates,  # Kısa formatlı tarihleri kullan
                     y=display_ma,
                     mode="lines",
                     name=f"{ma['type']}-{ma['period']}",

@@ -12,6 +12,7 @@ from utils.db_utils import (
     update_user_balance,
     add_transaction,
     update_asset,
+    init_user,
 )
 from datetime import datetime
 from helpers.indicator_info import indicators
@@ -59,6 +60,8 @@ def initialize_session_state():
         st.session_state.ma_counter = 0
     if "chart_type" not in st.session_state:
         st.session_state.chart_type = "normal"
+    if "last_symbol" not in st.session_state:
+        st.session_state.last_symbol = None
 
 
 def update_symbols(market):
@@ -136,6 +139,64 @@ def main():
     # Market selection
     market = st.sidebar.selectbox("Select Market", MARKETS, key="market")
 
+    # Chart type selection in sidebar (add this before timeframe selection)
+    chart_type = st.sidebar.radio(
+        "Chart Type", ["Normal", "Heikin-Ashi"], key="chart_type_radio"
+    )
+    st.session_state.chart_type = chart_type.lower().replace("-", "")
+
+    timeframe = st.sidebar.selectbox("Select Timeframe", TIMEFRAMES)
+
+    # Yeni "Random Symbol" butonu
+    if st.sidebar.button("Random Symbol"):
+        if st.session_state.symbols:
+            # Mevcut sembolü kaydet
+            st.session_state.last_symbol = st.session_state.selected_symbol
+            
+            # Şu anki sembol dışındaki sembollerden rastgele seç
+            available_symbols = [s for s in st.session_state.symbols if s != st.session_state.selected_symbol]
+            if available_symbols:
+                random_symbol = random.choice(available_symbols)
+                st.session_state.selected_symbol = random_symbol
+                
+                # Yeni sembol için veri çek
+                try:
+                    with st.spinner("Fetching data for new symbol..."):
+                        exchange = EXCHANGE_MAPPINGS.get(market)
+                        interval = get_interval(timeframe)
+                        full_symbol = get_full_symbol(market, random_symbol)
+                        
+                        data = fetch_market_data(full_symbol, exchange, interval)
+                        
+                        if data is not None and not data.empty:
+                            st.session_state.current_data = data
+                            
+                            # Rastgele bir nokta seç
+                            min_idx = int(len(data) * 0.2)
+                            max_idx = int(len(data) * 0.8)
+                            st.session_state.cutoff_index = random.randint(min_idx, max_idx)
+                            
+                            # Aktif indikatör varsa sinyalleri hesapla
+                            if st.session_state.active_indicator and st.session_state.active_indicator != "None":
+                                indicator_func = indicators[st.session_state.active_indicator]
+                                signals_df = indicator_func(data, random_symbol, timeframe)
+                                
+                                st.session_state.indicator_signals = [
+                                    {
+                                        "timestamp": pd.to_datetime(row["Sinyal Tarihi"], format="%d.%m.%Y %H:%M"),
+                                        "price": row["Son Fiyat"],
+                                        "type": row["Sinyal Türü"],
+                                        "indicator": st.session_state.active_indicator,
+                                    }
+                                    for _, row in signals_df.iterrows()
+                                ]
+                            
+                            st.rerun()
+                except Exception as e:
+                    st.error(f"Error fetching data: {str(e)}")
+                    # Hata durumunda önceki sembole geri dön
+                    st.session_state.selected_symbol = st.session_state.last_symbol
+
     # Sayfa ilk yüklendiğinde veya market değiştiğinde sembolleri yükle
     if not st.session_state.symbols or market != st.session_state.selected_market:
         with st.spinner(f"Loading {market} symbols..."):
@@ -159,14 +220,6 @@ def main():
         st.session_state.selected_symbol = selected_symbol
     else:
         st.sidebar.error(f"No symbols available for {market}")
-
-    # Chart type selection in sidebar (add this before timeframe selection)
-    chart_type = st.sidebar.radio(
-        "Chart Type", ["Normal", "Heikin-Ashi"], key="chart_type_radio"
-    )
-    st.session_state.chart_type = chart_type.lower().replace("-", "")
-
-    timeframe = st.sidebar.selectbox("Select Timeframe", TIMEFRAMES)
 
     # Indicator selection
     indicator_name = st.sidebar.selectbox(
@@ -244,9 +297,21 @@ def main():
         st.session_state.ma_counter -= 1
         st.rerun()
 
-    # Display current balance
+    # Display current balance and add balance update form
     current_balance = get_user_balance(st.session_state.user_id)
     st.sidebar.write(f"Current Balance: ${current_balance:.2f}")
+    
+    with st.sidebar.expander("Update Balance"):
+        with st.form("update_balance_form"):
+            new_balance = st.number_input("Enter new balance:", 
+                                        min_value=0.0, 
+                                        value=float(current_balance))
+            submit_balance = st.form_submit_button("Update Balance")
+            
+            if submit_balance:
+                update_user_balance(st.session_state.user_id, new_balance)
+                st.success(f"Balance updated to ${new_balance:.2f}")
+                st.rerun()
 
     if st.sidebar.button("Fetch Data"):
         try:
@@ -656,4 +721,5 @@ def main():
 
 if __name__ == "__main__":
     init_db()
+    init_user(1)  # Demo user'ı başlat
     main()

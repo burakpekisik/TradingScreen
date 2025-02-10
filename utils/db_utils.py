@@ -49,6 +49,21 @@ def init_db():
     conn.close()
 
 
+def init_user(user_id, initial_balance=10000):
+    """Initialize user with given balance if not exists"""
+    conn = sqlite3.connect("trading.db")
+    c = conn.cursor()
+    
+    c.execute("SELECT id FROM users WHERE id = ?", (user_id,))
+    if not c.fetchone():
+        c.execute(
+            "INSERT INTO users (id, username, balance) VALUES (?, ?, ?)",
+            (user_id, f"user_{user_id}", initial_balance)
+        )
+        conn.commit()
+    conn.close()
+
+
 def get_user_balance(user_id):
     conn = sqlite3.connect("trading.db")
     c = conn.cursor()
